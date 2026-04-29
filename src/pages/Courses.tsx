@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, setDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -9,11 +9,15 @@ import { Plus, Book, ChevronRight } from 'lucide-react';
 type Course = {
   id: string;
   name: string;
+  coursePart?: string;
   description: string;
   zaloLink: string;
   createdBy: string;
   monitors: string[];
+  students: string[];
   createdAt: any;
+  status?: string;
+  completedAt?: any;
 };
 
 export default function Courses() {
@@ -22,17 +26,24 @@ export default function Courses() {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCourseName, setNewCourseName] = useState('');
+  const [newCoursePart, setNewCoursePart] = useState('');
   const [newCourseDesc, setNewCourseDesc] = useState('');
   const [newCourseZalo, setNewCourseZalo] = useState('');
+  const [newCourseStudents, setNewCourseStudents] = useState('');
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     const q = query(collection(db, 'courses'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const courseList = snapshot.docs.map(doc => ({
+      let courseList = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Course[];
+      
+      if (userProfile?.role === 'student') {
+        courseList = courseList.filter(c => c.students?.includes(userProfile.id) || c.monitors?.includes(userProfile.id));
+      }
+      
       setCourses(courseList);
       setLoading(false);
     }, (error) => {
@@ -40,29 +51,41 @@ export default function Courses() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [userProfile]);
 
   const handleCreateCourse = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCourseName.trim() || !newCourseZalo.trim() || !currentUser) return;
+    if (!newCourseName.trim() || !newCoursePart.trim() || !currentUser) return;
+    
+    // Parse student IDs from input (split by comma, space, newline, tab)
+    const studentIds = newCourseStudents
+      .split(/[\n,\s\t]+/)
+      .map(id => id.trim())
+      .filter(id => id.length > 0);
+      
+    // Remove duplicates
+    const uniqueStudentIds = Array.from(new Set(studentIds));
     
     setCreating(true);
     try {
-      // Create a specific ID to use standard patterns or let addDoc create one. 
-      // But we need to use a generated ID
       const courseRef = doc(collection(db, 'courses'));
       await setDoc(courseRef, {
         name: newCourseName,
+        coursePart: newCoursePart,
         description: newCourseDesc,
         zaloLink: newCourseZalo,
         createdBy: currentUser.uid,
         monitors: [],
-        createdAt: serverTimestamp()
+        students: uniqueStudentIds,
+        createdAt: serverTimestamp(),
+        status: 'in_progress'
       });
       setShowAddModal(false);
       setNewCourseName('');
+      setNewCoursePart('');
       setNewCourseDesc('');
       setNewCourseZalo('');
+      setNewCourseStudents('');
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'courses');
     } finally {
@@ -120,7 +143,7 @@ export default function Courses() {
                   <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-blue-600 transition-colors" />
                 </div>
                 <h3 className="mt-4 text-lg font-medium text-gray-900 truncate">
-                  {course.name}
+                  {course.name} - Học phần {course.coursePart || 'N/A'}
                 </h3>
                 <p className="mt-1 text-sm text-gray-500 line-clamp-2">
                   {course.description || 'Không có mô tả'}
@@ -133,71 +156,88 @@ export default function Courses() {
 
       {/* Add Course Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => setShowAddModal(false)}></div>
-
-            {/* This element is to trick the browser into centering the modal contents. */}
-            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-
-            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-              <form onSubmit={handleCreateCourse}>
-                <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                  <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                    Tạo Lớp học phần mới
-                  </h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Tên Lớp (Môn học)</label>
-                      <input
-                        type="text"
-                        required
-                        value={newCourseName}
-                        onChange={e => setNewCourseName(e.target.value)}
-                        className="mt-1 flex-1 block w-full rounded-md sm:text-sm border-gray-300 border px-3 py-2"
-                        placeholder="VD: Điều dưỡng cơ bản 1"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Mô tả chi tiết</label>
-                      <textarea
-                        value={newCourseDesc}
-                        onChange={e => setNewCourseDesc(e.target.value)}
-                        className="mt-1 flex-1 block w-full rounded-md sm:text-sm border-gray-300 border px-3 py-2"
-                        rows={3}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Link Nhóm Zalo</label>
-                      <input
-                        type="url"
-                        required
-                        value={newCourseZalo}
-                        onChange={e => setNewCourseZalo(e.target.value)}
-                        className="mt-1 flex-1 block w-full rounded-md sm:text-sm border-gray-300 border px-3 py-2"
-                        placeholder="https://zalo.me/g/..."
-                      />
-                    </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-500 bg-opacity-75">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-full">
+            <form onSubmit={handleCreateCourse} className="flex flex-col max-h-full">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Tạo Lớp học phần mới
+                </h3>
+              </div>
+              <div className="px-6 py-4 overflow-y-auto space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Tên Môn học</label>
+                    <input
+                      type="text"
+                      required
+                      value={newCourseName}
+                      onChange={e => setNewCourseName(e.target.value)}
+                      className="mt-1 block w-full rounded-md sm:text-sm border-gray-300 border px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="VD: Điều dưỡng cơ bản"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Học phần mấy</label>
+                    <input
+                      type="text"
+                      required
+                      value={newCoursePart}
+                      onChange={e => setNewCoursePart(e.target.value)}
+                      className="mt-1 block w-full rounded-md sm:text-sm border-gray-300 border px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="VD: 1"
+                    />
                   </div>
                 </div>
-                <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                  <button
-                    type="submit"
-                    disabled={creating}
-                    className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
-                  >
-                    {creating ? 'Đang tạo...' : 'Tạo Lớp'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddModal(false)}
-                    className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
-                  >
-                    Hủy
-                  </button>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Mô tả chi tiết</label>
+                  <textarea
+                    value={newCourseDesc}
+                    onChange={e => setNewCourseDesc(e.target.value)}
+                    className="mt-1 block w-full rounded-md sm:text-sm border-gray-300 border px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                    rows={3}
+                  />
                 </div>
-              </form>
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Link Nhóm Zalo (Tùy chọn)</label>
+                  <input
+                    type="url"
+                    value={newCourseZalo}
+                    onChange={e => setNewCourseZalo(e.target.value)}
+                    className="mt-1 block w-full rounded-md sm:text-sm border-gray-300 border px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="https://zalo.me/g/..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Danh sách Sinh viên (Bắt buộc)</label>
+                  <p className="text-xs text-gray-500 mb-1">Nhập các Mã sinh viên, cách nhau bởi dấu phẩy, khoảng trắng hoặc xuống dòng.</p>
+                  <textarea
+                    required
+                    value={newCourseStudents}
+                    onChange={e => setNewCourseStudents(e.target.value)}
+                    className="mt-1 block w-full rounded-md sm:text-sm border-gray-300 border px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                    rows={4}
+                    placeholder="VD: 20210001, 20210002"
+                  />
+                </div>
+              </div>
+              <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 rounded-md"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={creating}
+                  className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md disabled:opacity-50"
+                >
+                  {creating ? 'Đang tạo...' : 'Tạo Lớp'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

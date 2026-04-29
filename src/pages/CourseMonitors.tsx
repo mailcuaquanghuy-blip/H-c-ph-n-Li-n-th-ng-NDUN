@@ -80,10 +80,10 @@ export default function CourseMonitors() {
 
       <div className="bg-white shadow-sm border border-gray-200 rounded-lg overflow-hidden">
         <ul className="divide-y divide-gray-200">
-          {users.length === 0 ? (
-            <li className="p-6 text-center text-gray-500">Không có sinh viên nào.</li>
+          {users.filter(u => (course.students || []).includes(u.id)).length === 0 ? (
+            <li className="p-6 text-center text-gray-500">Lớp học phần chưa có sinh viên nào.</li>
           ) : (
-            users.map(user => {
+            users.filter(u => (course.students || []).includes(u.id)).map(user => {
               const isMonitor = (course.monitors || []).includes(user.id);
               
               return (
