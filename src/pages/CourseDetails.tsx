@@ -34,6 +34,9 @@ export default function CourseDetails() {
   // States for tabs and stats
   const [activeTab, setActiveTab] = useState<'assignments' | 'students' | 'progress'>('assignments');
   const [allStudents, setAllStudents] = useState<any[]>([]);
+  const [sortConfig, setSortConfig] = useState<{key: string, direction: 'asc'|'desc'}>({key: 'firstName', direction: 'asc'});
+  const [editingGroup, setEditingGroup] = useState<{studentId: string, value: string} | null>(null);
+  const [updatingGroup, setUpdatingGroup] = useState(false);
   const [allCheckIns, setAllCheckIns] = useState<string[]>([]);
   const [allProgress, setAllProgress] = useState<any[]>([]); // To calculate course progress
 
@@ -179,6 +182,34 @@ export default function CourseDetails() {
     }
   };
 
+  const getFirstName = (fullName: string) => {
+    if (!fullName) return '';
+    const parts = fullName.trim().split(' ');
+    return parts[parts.length - 1].toLowerCase();
+  };
+
+  const handleSort = (key: string) => {
+    setSortConfig(current => ({
+      key,
+      direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  const handleUpdatePracticeGroup = async (studentId: string, value: string) => {
+    if (!courseId || !isAdmin && !canManageAssignments) return;
+    setUpdatingGroup(true);
+    try {
+      await updateDoc(doc(db, 'courses', courseId), {
+        [`studentGroups.${studentId}`]: value.trim()
+      });
+      setEditingGroup(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `courses/${courseId}`);
+    } finally {
+      setUpdatingGroup(false);
+    }
+  };
+
   const handleAdminRemoveStudent = async (studentUserId: string) => {
     if (!courseId || !course) return;
     if (!window.confirm("Bạn có chắc chắn muốn xóa sinh viên khỏi lớp phần này?")) return;
@@ -287,18 +318,45 @@ export default function CourseDetails() {
 
   const STATUS_COLORS = {
     'not_started': 'bg-gray-100 text-gray-800 border-gray-200',
+    'submitted': 'bg-yellow-100 text-yellow-800 border-yellow-200',
+    'received': 'bg-blue-100 text-blue-800 border-blue-200',
     'completed': 'bg-green-100 text-green-800 border-green-200'
   };
 
   // Progress metrics calculation
   const totalStudentAssignments = allStudents.length * assignments.length;
-  const completedAssignments = allProgress.filter(p => p.status === 'completed' && allStudents.some(s => s.id === p.userId)).length;
+  const completedAssignments = allProgress.filter(p => (p.status === 'completed' || p.status === 'received') && allStudents.some(s => s.id === p.userId)).length;
+  const submittedAssignments = allProgress.filter(p => p.status === 'submitted' && allStudents.some(s => s.id === p.userId)).length;
   const completionPercentage = totalStudentAssignments > 0 ? Math.round((completedAssignments / totalStudentAssignments) * 100) : 0;
   
   const chartData = [
-    { name: 'Đã hoàn thành', value: completedAssignments, color: '#10B981' },
-    { name: 'Chưa hoàn thành', value: totalStudentAssignments - completedAssignments, color: '#D1D5DB' },
+    { name: 'Đã nhận/Hoàn thành', value: completedAssignments, color: '#10B981' }, // Green
+    { name: 'Đã gửi', value: submittedAssignments, color: '#FBBF24' }, // Yellow
+    { name: 'Chưa làm', value: totalStudentAssignments - completedAssignments - submittedAssignments, color: '#D1D5DB' }, // Gray
   ].filter(d => d.value > 0);
+
+  const sortedStudents = React.useMemo(() => {
+    return [...allStudents].map(s => ({
+      ...s,
+      practiceGroup: course?.studentGroups?.[s.id] || '',
+      firstName: getFirstName(s.fullName)
+    })).sort((a, b) => {
+      let valA = a[sortConfig.key as keyof typeof a] || '';
+      let valB = b[sortConfig.key as keyof typeof b] || '';
+      
+      if (typeof valA === 'string') valA = valA.toLowerCase();
+      if (typeof valB === 'string') valB = valB.toLowerCase();
+
+      if (sortConfig.key === 'practiceGroup') {
+        valA = a.practiceGroup || 'zzzz';
+        valB = b.practiceGroup || 'zzzz';
+      }
+
+      if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [allStudents, course?.studentGroups, sortConfig]);
 
   return (
     <div className="space-y-6">
@@ -446,13 +504,21 @@ export default function CourseDetails() {
           ) : (
             <div className="space-y-4">
               {assignments.map(asg => {
-                const currentStatus = progressData[asg.id]?.status || 'not_started';
+                const currentProgress = progressData[asg.id] || {};
+                const currentStatus = currentProgress.status || 'not_started';
                 
                 return (
                   <div key={asg.id} className="bg-white shadow-sm border border-gray-200 rounded-lg p-5">
                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                       <div className="flex-1">
-                        <h3 className="text-lg font-medium text-gray-900">{asg.title}</h3>
+                        <h3 className="text-lg font-medium text-gray-900">
+                          {asg.title}
+                          {currentProgress.groupName && (
+                            <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                              {currentProgress.groupName}
+                            </span>
+                          )}
+                        </h3>
                         {asg.description && <p className="mt-1 text-gray-600 whitespace-pre-wrap text-sm">{asg.description}</p>}
                       </div>
                       
@@ -461,11 +527,17 @@ export default function CourseDetails() {
                         <select
                           value={currentStatus === 'in_progress' ? 'not_started' : currentStatus} // handle legacy data
                           onChange={(e) => updateProgress(asg.id, e.target.value)}
+                          disabled={currentStatus === 'received' || currentStatus === 'completed'}
                           className={`block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border ${STATUS_COLORS[currentStatus as keyof typeof STATUS_COLORS] || STATUS_COLORS['not_started']}`}
                         >
-                          <option value="not_started">Chưa hoàn thành</option>
-                          <option value="completed">Đã hoàn thành</option>
+                          <option value="not_started">Chưa gửi</option>
+                          <option value="submitted">Đã gửi</option>
+                          <option value="received" disabled className="text-gray-400">Đã nhận</option>
+                          {currentStatus === 'completed' && <option value="completed" disabled>Đã hoàn thành</option>}
                         </select>
+                        {(currentStatus === 'received' || currentStatus === 'completed') && (
+                          <p className="mt-1 text-xs text-blue-600">Ban cán sự đã duyệt</p>
+                        )}
                       </div>
                     </div>
 
@@ -494,24 +566,37 @@ export default function CourseDetails() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Họ và tên</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mã SV</th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    STT
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('firstName')}>
+                    Họ và tên {sortConfig.key === 'firstName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('id')}>
+                    Mã SV {sortConfig.key === 'id' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('practiceGroup')}>
+                    Nhóm TH {sortConfig.key === 'practiceGroup' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                  </th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Điểm danh</th>
-                  {isAdmin && (
+                  {canManageAssignments && (
                     <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Thao tác</th>
                   )}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {allStudents.length === 0 ? (
+                {sortedStudents.length === 0 ? (
                   <tr>
-                    <td colSpan={isAdmin ? 4 : 3} className="px-6 py-8 text-center text-gray-500">Chưa có sinh viên nào trong lớp.</td>
+                    <td colSpan={canManageAssignments ? 6 : 5} className="px-6 py-8 text-center text-gray-500">Chưa có sinh viên nào trong lớp.</td>
                   </tr>
                 ) : (
-                  allStudents.map(student => {
+                  sortedStudents.map((student, index) => {
                     const isCheckedIn = allCheckIns.includes(student.id);
                     return (
                       <tr key={student.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {index + 1}
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                           {student.fullName}
                           {course.monitors?.includes(student.id) && (
@@ -521,6 +606,33 @@ export default function CourseDetails() {
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.id}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {canManageAssignments ? (
+                            editingGroup?.studentId === student.id ? (
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  defaultValue={student.practiceGroup}
+                                  className="w-20 px-2 py-1 text-sm border border-blue-500 rounded outline-none flex"
+                                  onBlur={(e) => handleUpdatePracticeGroup(student.id, e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleUpdatePracticeGroup(student.id, e.currentTarget.value);
+                                    if (e.key === 'Escape') setEditingGroup(null);
+                                  }}
+                                  disabled={updatingGroup}
+                                />
+                            ) : (
+                              <div 
+                                className="cursor-pointer hover:bg-gray-50 px-2 py-1 rounded border border-transparent hover:border-gray-300 min-h-[28px] flex items-center"
+                                onClick={() => setEditingGroup({studentId: student.id, value: student.practiceGroup})}
+                              >
+                                {student.practiceGroup || <span className="text-gray-400 italic">Chưa phân</span>}
+                              </div>
+                            )
+                          ) : (
+                            student.practiceGroup || <span className="text-gray-400 italic">-</span>
+                          )}
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {isAdmin ? (
                             <button
@@ -538,15 +650,17 @@ export default function CourseDetails() {
                             )
                           )}
                         </td>
-                        {isAdmin && (
+                        {canManageAssignments && (
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <button
-                              onClick={() => handleAdminRemoveStudent(student.id)}
-                              className="text-red-600 hover:text-red-900 inline-flex items-center"
-                              title="Xóa khỏi lớp học phần"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            {isAdmin && (
+                              <button
+                                onClick={() => handleAdminRemoveStudent(student.id)}
+                                className="text-red-600 hover:text-red-900 inline-flex items-center"
+                                title="Xóa khỏi lớp học phần"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
                           </td>
                         )}
                       </tr>
