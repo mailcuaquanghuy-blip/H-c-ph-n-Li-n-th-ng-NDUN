@@ -1,0 +1,85 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with student ID.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "fullName": { "type": "string" },
+        "studentId": { "type": "string" },
+        "role": { "type": "string", "enum": ["student", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "fullName", "studentId", "role", "createdAt"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "Lớp học phần with Zalo link.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "zaloLink": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "monitors": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "zaloLink", "createdBy", "createdAt", "monitors"]
+    },
+    "CheckIn": {
+      "title": "CheckIn",
+      "description": "Student check-in for a course.",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["studentId", "timestamp"]
+    },
+    "Assignment": {
+      "title": "Assignment",
+      "description": "An assignment for a course.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "createdBy", "createdAt"]
+    },
+    "Progress": {
+      "title": "Progress",
+      "description": "Student progress for an assignment.",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "enum": ["not_started", "in_progress", "completed"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["status", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles"
+    },
+    "/courses/{courseId}": {
+      "schema": { "$ref": "#/entities/Course" },
+      "description": "Courses/Lớp học phần"
+    },
+    "/courses/{courseId}/checkins/{userId}": {
+      "schema": { "$ref": "#/entities/CheckIn" },
+      "description": "Check-ins per course per user"
+    },
+    "/courses/{courseId}/assignments/{assignmentId}": {
+      "schema": { "$ref": "#/entities/Assignment" },
+      "description": "Assignments per course"
+    },
+    "/courses/{courseId}/assignments/{assignmentId}/progress/{userId}": {
+      "schema": { "$ref": "#/entities/Progress" },
+      "description": "Progress entries per user per assignment"
+    }
+  }
+}
