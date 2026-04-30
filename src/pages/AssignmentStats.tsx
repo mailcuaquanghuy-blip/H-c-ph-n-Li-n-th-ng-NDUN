@@ -280,7 +280,7 @@ export default function AssignmentStats() {
                           <option value="not_started">Chưa làm</option>
                           <option value="submitted">Đã gửi (Chờ duyệt)</option>
                           <option value="received">Đã nhận</option>
-                          <option value="completed" disabled>Đã hoàn thành</option>
+                          <option value="completed">Đã hoàn thành</option>
                         </select>
                       </div>
                     </td>

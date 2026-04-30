@@ -22,6 +22,12 @@ export default function CourseDetails() {
   const [newAsgDesc, setNewAsgDesc] = useState('');
   const [creatingAsg, setCreatingAsg] = useState(false);
 
+  // States for Edit Assignment
+  const [editingAssignment, setEditingAssignment] = useState<any>(null);
+  const [editAsgTitle, setEditAsgTitle] = useState('');
+  const [editAsgDesc, setEditAsgDesc] = useState('');
+  const [updatingAsg, setUpdatingAsg] = useState(false);
+
   // States for Edit Course
   const [showEditCourse, setShowEditCourse] = useState(false);
   const [editCourseName, setEditCourseName] = useState('');
@@ -246,6 +252,41 @@ export default function CourseDetails() {
     }
   };
 
+  const handleDeleteAssignment = async (assignmentId: string) => {
+    if (!courseId || !canManageAssignments) return;
+    if (!window.confirm("Bạn có chắc chắn muốn xóa bài tập này? Tất cả tiến độ của sinh viên cũng sẽ bị xóa.")) return;
+    
+    try {
+      await deleteDoc(doc(db, 'courses', courseId, 'assignments', assignmentId));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `courses/${courseId}/assignments/${assignmentId}`);
+    }
+  };
+
+  const handleUpdateAssignment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!courseId || !editingAssignment || !canManageAssignments) return;
+
+    setUpdatingAsg(true);
+    try {
+      await updateDoc(doc(db, 'courses', courseId, 'assignments', editingAssignment.id), {
+        title: editAsgTitle.trim(),
+        description: editAsgDesc.trim()
+      });
+      setEditingAssignment(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `courses/${courseId}/assignments/${editingAssignment.id}`);
+    } finally {
+      setUpdatingAsg(false);
+    }
+  };
+
+  const openEditAssignment = (asg: any) => {
+    setEditingAssignment(asg);
+    setEditAsgTitle(asg.title);
+    setEditAsgDesc(asg.description || '');
+  };
+
   const updateProgress = async (assignmentId: string, status: string) => {
     if (!currentUser || !courseId) return;
     try {
@@ -306,15 +347,11 @@ export default function CourseDetails() {
     }
   };
 
-  if (!course) {
-    return <div className="text-center py-12">Đang tải...</div>;
-  }
-
   const isAdmin = userProfile?.role === 'admin';
   const isMonitor = course?.monitors?.includes(currentUser?.uid);
   const canManageAssignments = isAdmin || isMonitor;
   const showZaloLink = canManageAssignments || checkInStatus;
-  const courseCompleted = course.status === 'completed';
+  const courseCompleted = course?.status === 'completed';
 
   const STATUS_COLORS = {
     'not_started': 'bg-gray-100 text-gray-800 border-gray-200',
@@ -329,11 +366,11 @@ export default function CourseDetails() {
   const submittedAssignments = allProgress.filter(p => p.status === 'submitted' && allStudents.some(s => s.id === p.userId)).length;
   const completionPercentage = totalStudentAssignments > 0 ? Math.round((completedAssignments / totalStudentAssignments) * 100) : 0;
   
-  const chartData = [
+  const chartData = React.useMemo(() => [
     { name: 'Đã nhận/Hoàn thành', value: completedAssignments, color: '#10B981' }, // Green
     { name: 'Đã gửi', value: submittedAssignments, color: '#FBBF24' }, // Yellow
-    { name: 'Chưa làm', value: totalStudentAssignments - completedAssignments - submittedAssignments, color: '#D1D5DB' }, // Gray
-  ].filter(d => d.value > 0);
+    { name: 'Chưa làm', value: Math.max(0, totalStudentAssignments - completedAssignments - submittedAssignments), color: '#D1D5DB' }, // Gray
+  ].filter(d => d.value > 0), [completedAssignments, submittedAssignments, totalStudentAssignments]);
 
   const sortedStudents = React.useMemo(() => {
     return [...allStudents].map(s => ({
@@ -357,6 +394,10 @@ export default function CourseDetails() {
       return 0;
     });
   }, [allStudents, course?.studentGroups, sortConfig]);
+
+  if (!course) {
+    return <div className="text-center py-12">Đang tải...</div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -527,22 +568,39 @@ export default function CourseDetails() {
                         <select
                           value={currentStatus === 'in_progress' ? 'not_started' : currentStatus} // handle legacy data
                           onChange={(e) => updateProgress(asg.id, e.target.value)}
-                          disabled={currentStatus === 'received' || currentStatus === 'completed'}
+                          disabled={currentStatus === 'received'}
                           className={`block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border ${STATUS_COLORS[currentStatus as keyof typeof STATUS_COLORS] || STATUS_COLORS['not_started']}`}
                         >
-                          <option value="not_started">Chưa gửi</option>
-                          <option value="submitted">Đã gửi</option>
-                          <option value="received" disabled className="text-gray-400">Đã nhận</option>
-                          {currentStatus === 'completed' && <option value="completed" disabled>Đã hoàn thành</option>}
+                          <option value="not_started">Chưa làm/Chưa gửi</option>
+                          <option value="submitted">Đã nộp bài (Chờ duyệt)</option>
+                          <option value="completed">Đã hoàn thành</option>
+                          <option value="received" disabled className="text-gray-400">Cán sự đã nhận bài</option>
                         </select>
-                        {(currentStatus === 'received' || currentStatus === 'completed') && (
-                          <p className="mt-1 text-xs text-blue-600">Ban cán sự đã duyệt</p>
+                        {currentStatus === 'received' && (
+                          <p className="mt-1 text-xs text-blue-600 font-medium">Ban cán sự đã xác nhận nhận bài</p>
+                        )}
+                        {currentStatus === 'completed' && (
+                          <p className="mt-1 text-xs text-green-600 font-medium">Bản thảo cuối cùng / Đã hoàn thành</p>
                         )}
                       </div>
                     </div>
 
                     {canManageAssignments && (
-                      <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end">
+                      <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
+                        <div className="flex gap-4 border-r border-gray-200 pr-4">
+                          <button
+                            onClick={() => openEditAssignment(asg)}
+                            className="text-sm font-medium text-gray-600 hover:text-blue-600"
+                          >
+                            Chỉnh sửa
+                          </button>
+                          <button
+                            onClick={() => handleDeleteAssignment(asg.id)}
+                            className="text-sm font-medium text-red-600 hover:text-red-800"
+                          >
+                            Xóa
+                          </button>
+                        </div>
                         <Link to={`/courses/${courseId}/assignments/${asg.id}/stats`} className="text-sm font-medium text-blue-600 hover:text-blue-500">
                           Xem thống kê lớp học &rarr;
                         </Link>
@@ -793,6 +851,58 @@ export default function CourseDetails() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Edit Assignment Modal */}
+      {editingAssignment && canManageAssignments && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-500 bg-opacity-75">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-full">
+            <form onSubmit={handleUpdateAssignment} className="flex flex-col max-h-full">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Sửa Thông tin Bài tập
+                </h3>
+              </div>
+              <div className="px-6 py-4 overflow-y-auto space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Tiêu đề bài tập</label>
+                  <input
+                    type="text"
+                    required
+                    value={editAsgTitle}
+                    onChange={e => setEditAsgTitle(e.target.value)}
+                    className="mt-1 block w-full rounded-md sm:text-sm border-gray-300 border px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Hướng dẫn chi tiết</label>
+                  <textarea
+                    value={editAsgDesc}
+                    onChange={e => setEditAsgDesc(e.target.value)}
+                    className="mt-1 block w-full rounded-md sm:text-sm border-gray-300 border px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                    rows={4}
+                  />
+                </div>
+              </div>
+              <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setEditingAssignment(null)}
+                  className="px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 rounded-md"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={updatingAsg}
+                  className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md disabled:opacity-50"
+                >
+                  {updatingAsg ? 'Đang lưu...' : 'Lưu Thay đổi'}
+                </button>
+              </div>
+            </form>
+          </div>
+         </div>
       )}
 
       {/* Edit Course Modal */}
