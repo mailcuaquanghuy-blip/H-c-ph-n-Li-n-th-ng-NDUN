@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, doc, onSnapshot, getDoc, getDocs, setDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, getDoc, getDocs, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { handleFirestoreError, OperationType } from '../lib/error-handler';
 import { ArrowLeft, CheckCircle2, Circle, Clock } from 'lucide-react';
@@ -151,11 +151,19 @@ export default function AssignmentStats() {
     }));
   };
 
-  const sortedStudents = [...students].map(s => ({
-    ...s,
-    firstName: getFirstName(s.fullName),
-    groupName: progressMap[s.id]?.groupName || ''
-  })).sort((a, b) => {
+  const sortedStudents = [...students].map(s => {
+    let pgName = progressMap[s.id]?.groupName || '';
+    if (!pgName && course?.practiceGroups) {
+      const groupEntry = Object.entries(course.practiceGroups).find(([_, g]: any) => g.members.includes(s.id));
+      if (groupEntry) pgName = (groupEntry[1] as any).name;
+    }
+
+    return {
+      ...s,
+      firstName: getFirstName(s.fullName),
+      groupName: pgName
+    };
+  }).sort((a, b) => {
     let valA = a[sortConfig.key as keyof typeof a] || '';
     let valB = b[sortConfig.key as keyof typeof b] || '';
     

@@ -446,11 +446,20 @@ export default function CourseDetails() {
   ].filter(d => d.value > 0), [completedAssignments, submittedAssignments, totalStudentAssignments]);
 
   const sortedStudents = React.useMemo(() => {
-    return [...allStudents].map(s => ({
-      ...s,
-      practiceGroup: course?.studentGroups?.[s.id] || '',
-      firstName: getFirstName(s.fullName)
-    })).sort((a, b) => {
+    return [...allStudents].map(s => {
+      // Find group name from practiceGroups
+      let pgName = course?.studentGroups?.[s.id] || '';
+      if (!pgName && course?.practiceGroups) {
+        const groupEntry = Object.entries(course.practiceGroups).find(([_, g]: any) => g.members.includes(s.id));
+        if (groupEntry) pgName = (groupEntry[1] as any).name;
+      }
+
+      return {
+        ...s,
+        practiceGroup: pgName,
+        firstName: getFirstName(s.fullName)
+      };
+    }).sort((a, b) => {
       let valA = a[sortConfig.key as keyof typeof a] || '';
       let valB = b[sortConfig.key as keyof typeof b] || '';
       
@@ -466,7 +475,7 @@ export default function CourseDetails() {
       if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [allStudents, course?.studentGroups, sortConfig]);
+  }, [allStudents, course?.studentGroups, course?.practiceGroups, sortConfig]);
 
   if (!course) {
     return <div className="text-center py-12">Đang tải...</div>;
@@ -819,17 +828,18 @@ export default function CourseDetails() {
 
       {/* Tab Content: Progress */}
       {activeTab === 'progress' && (
-        <div className="space-y-6">
+        <div className="space-y-8">
+          {/* Overview Section */}
           <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div>
-              <h2 className="text-xl font-bold text-gray-900">Tiến độ học tập của Lớp</h2>
+            <div className="flex-1">
+              <h2 className="text-xl font-bold text-gray-900">Tổng quan Tiến độ</h2>
               <p className="mt-1 text-sm text-gray-500">
-                Thống kê tổng mức độ hoàn thành các bài tập của toàn bộ sinh viên trong lớp.
+                Thống kê tổng mức độ hoàn thành các bài tập của toàn bộ sinh viên.
               </p>
               
               <div className="mt-6 flex items-baseline gap-2">
                 <span className="text-4xl font-extrabold text-blue-600">{completionPercentage}%</span>
-                <span className="text-sm font-medium text-gray-500">hoàn thành</span>
+                <span className="text-sm font-medium text-gray-500">hoàn thành toàn lớp</span>
               </div>
               
               <div className="mt-2 text-sm text-gray-500">
@@ -850,21 +860,21 @@ export default function CourseDetails() {
               {courseCompleted && (
                 <div className="mt-6 inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-green-50 text-green-700 border border-green-200">
                   <CheckCircle2 className="mr-2 h-5 w-5" />
-                  Môn học đã được đánh dấu hoàn thành
+                  Môn học đã được hoàn thành
                 </div>
               )}
             </div>
 
             {totalStudentAssignments > 0 && chartData.length > 0 && (
-              <div className="h-48 w-full md:w-72 mt-4 md:mt-0 relative">
-                <ResponsiveContainer width="100%" height="100%">
+              <div className="h-56 w-full md:w-80 flex flex-col items-center">
+                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={chartData}
                       cx="50%"
                       cy="50%"
-                      innerRadius={50}
-                      outerRadius={80}
+                      innerRadius={60}
+                      outerRadius={90}
                       paddingAngle={2}
                       dataKey="value"
                     >
@@ -875,13 +885,123 @@ export default function CourseDetails() {
                     <Tooltip formatter={(value) => [`${value} bài`, '']} />
                   </PieChart>
                 </ResponsiveContainer>
+                <div className="mt-2 flex flex-wrap justify-center gap-4 text-xs font-medium text-gray-500">
+                  {chartData.map((d, i) => (
+                    <div key={i} className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: d.color }}></div>
+                      {d.name}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
-            {totalStudentAssignments === 0 && (
-              <div className="h-40 w-full md:w-64 flex items-center justify-center bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                <span className="text-sm text-gray-400">Chưa có bài tập nào</span>
-              </div>
-            )}
+          </div>
+
+          {/* Per Assignment Progress */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {assignments.map(asg => {
+              const asgProg = allProgress.filter(p => p.assignmentId === asg.id && allStudents.some(s => s.id === p.userId));
+              const done = asgProg.filter(p => p.status === 'completed' || p.status === 'received').length;
+              const submitted = asgProg.filter(p => p.status === 'submitted').length;
+              const working = asgProg.filter(p => p.status === 'in_progress').length;
+              const notStarted = Math.max(0, allStudents.length - done - submitted - working);
+              
+              const asgData = [
+                { name: 'Xong', value: done, color: '#10B981' },
+                { name: 'Đã nộp', value: submitted, color: '#FBBF24' },
+                { name: 'Đang làm', value: working, color: '#3B82F6' },
+                { name: 'Chưa làm', value: notStarted, color: '#D1D5DB' }
+              ].filter(d => d.value > 0);
+
+              const asgDonePercent = Math.round((done / allStudents.length) * 100) || 0;
+
+              return (
+                <div key={asg.id} className="bg-white p-5 rounded-lg border border-gray-100 shadow-sm flex flex-col">
+                  <h4 className="font-bold text-gray-800 line-clamp-1 h-6 mb-1">{asg.title}</h4>
+                  <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-4">
+                    {asg.type === 'group' ? 'Bài tập Nhóm' : 'Bài tập Cá nhân'}
+                  </p>
+                  
+                  <div className="h-40 w-full mb-4">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={asgData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={35}
+                          outerRadius={55}
+                          dataKey="value"
+                        >
+                          {asgData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value) => [`${value} SV`, '']} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  
+                  <div className="mt-auto space-y-2">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500">Hoàn thành</span>
+                      <span className="font-bold text-gray-900">{asgDonePercent}%</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                      <div className="bg-green-500 h-full rounded-full transition-all duration-500" style={{ width: `${asgDonePercent}%` }}></div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Detailed Progress Table */}
+          <div className="bg-white shadow-sm border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50/50">
+              <h3 className="text-lg font-bold text-gray-900">Chi tiết Tiến độ từng Sinh viên</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50 text-gray-500">
+                  <tr>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider">Học phẩm & Nhóm</th>
+                    {assignments.map(asg => (
+                      <th key={asg.id} scope="col" className="px-4 py-3 text-center text-xs font-bold uppercase tracking-wider min-w-[120px]">
+                        {asg.title}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {sortedStudents.map(student => (
+                    <tr key={student.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-bold text-gray-900">{student.fullName}</div>
+                        <div className="text-xs text-gray-500">
+                          {student.id} • {student.practiceGroup || <span className="italic text-gray-400">Chưa phân nhóm</span>}
+                        </div>
+                      </td>
+                      {assignments.map(asg => {
+                        const prog = allProgress.find(p => p.assignmentId === asg.id && p.userId === student.id);
+                        const status = prog?.status || 'not_started';
+                        
+                        return (
+                          <td key={asg.id} className="px-4 py-4 whitespace-nowrap text-center">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${STATUS_COLORS[status as keyof typeof STATUS_COLORS]}`}>
+                              {status === 'completed' ? 'Xong' : 
+                               status === 'received' ? 'Đã nhận' :
+                               status === 'submitted' ? 'Đã nộp' :
+                               status === 'in_progress' ? 'Đang làm' : 'Chưa làm'}
+                            </span>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
