@@ -15,7 +15,7 @@
     },
     "Course": {
       "title": "Course",
-      "description": "Lớp học phần with Zalo link.",
+      "description": "Lớp học phần with Zalo link and practice groups.",
       "type": "object",
       "properties": {
         "name": { "type": "string" },
@@ -23,6 +23,16 @@
         "zaloLink": { "type": "string" },
         "createdBy": { "type": "string" },
         "monitors": { "type": "array", "items": { "type": "string" } },
+        "practiceGroups": { 
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "members": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "zaloLink", "createdBy", "createdAt", "monitors"]
@@ -44,17 +54,19 @@
       "properties": {
         "title": { "type": "string" },
         "description": { "type": "string" },
+        "type": { "type": "string", "enum": ["individual", "group"] },
         "createdBy": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["title", "createdBy", "createdAt"]
+      "required": ["title", "createdBy", "createdAt", "type"]
     },
     "Progress": {
       "title": "Progress",
       "description": "Student progress for an assignment.",
       "type": "object",
       "properties": {
-        "status": { "type": "string", "enum": ["not_started", "in_progress", "completed"] },
+        "status": { "type": "string", "enum": ["not_started", "in_progress", "completed", "submitted", "received"] },
+        "groupName": { "type": "string" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["status", "updatedAt"]

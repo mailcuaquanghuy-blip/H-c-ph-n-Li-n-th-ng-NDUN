@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { signInAnonymously } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
@@ -113,7 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error.message === 'Sai mật khẩu!' || error.message.includes('không tồn tại')) {
         throw error;
       }
-      handleFirestoreError(error, OperationType.GET, `users/${username}`);
+      handleFirestoreError(error, OperationType.GET, `users/${usernameInput}`);
       throw new Error('Lỗi hệ thống khi đăng nhập');
     }
   };

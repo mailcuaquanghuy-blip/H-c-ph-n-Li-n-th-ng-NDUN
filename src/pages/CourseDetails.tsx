@@ -20,7 +20,14 @@ export default function CourseDetails() {
   // States for new assignment
   const [newAsgTitle, setNewAsgTitle] = useState('');
   const [newAsgDesc, setNewAsgDesc] = useState('');
+  const [newAsgType, setNewAsgType] = useState<'individual' | 'group'>('individual');
   const [creatingAsg, setCreatingAsg] = useState(false);
+
+  // States for Practice Groups
+  const [showManageGroups, setShowManageGroups] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+  const [creatingGroup, setCreatingGroup] = useState(false);
 
   // States for Edit Assignment
   const [editingAssignment, setEditingAssignment] = useState<any>(null);
@@ -239,16 +246,52 @@ export default function CourseDetails() {
       await setDoc(asgRef, {
         title: newAsgTitle,
         description: newAsgDesc,
+        type: newAsgType,
         createdBy: currentUser.uid,
         createdAt: serverTimestamp()
       });
       setShowAddAssignment(false);
       setNewAsgTitle('');
       setNewAsgDesc('');
+      setNewAsgType('individual');
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, `courses/${courseId}/assignments`);
     } finally {
       setCreatingAsg(false);
+    }
+  };
+
+  const handleCreatePracticeGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!courseId || !newGroupName.trim() || selectedMembers.length === 0) return;
+
+    setCreatingGroup(true);
+    try {
+      const groupId = `group_${Date.now()}`;
+      await updateDoc(doc(db, 'courses', courseId), {
+        [`practiceGroups.${groupId}`]: {
+          name: newGroupName.trim(),
+          members: selectedMembers
+        }
+      });
+      setNewGroupName('');
+      setSelectedMembers([]);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `courses/${courseId}`);
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
+  const handleDeletePracticeGroup = async (groupId: string) => {
+    if (!courseId || !window.confirm("Xóa nhóm này?")) return;
+    try {
+      const { [groupId]: _, ...remainingGroups } = course.practiceGroups || {};
+      await updateDoc(doc(db, 'courses', courseId), {
+        practiceGroups: remainingGroups
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `courses/${courseId}`);
     }
   };
 
@@ -524,6 +567,15 @@ export default function CourseDetails() {
               )}
               {canManageAssignments && (
                 <button
+                  onClick={() => setShowManageGroups(true)}
+                  className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                >
+                  <Users className="h-4 w-4 mr-1.5" />
+                  Quản lý Nhóm TH
+                </button>
+              )}
+              {canManageAssignments && (
+                <button
                   onClick={() => setShowAddAssignment(true)}
                   className="inline-flex items-center px-3 py-1.5 border border-transparent rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
                 >
@@ -563,24 +615,27 @@ export default function CourseDetails() {
                         {asg.description && <p className="mt-1 text-gray-600 whitespace-pre-wrap text-sm">{asg.description}</p>}
                       </div>
                       
-                      <div className="w-full sm:w-48 flex-shrink-0">
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Tiến độ của bạn:</label>
+                    <div className="w-full sm:w-48 flex-shrink-0">
+                        <label className="block text-xs font-medium text-gray-500 mb-1">
+                          Hình thức: {asg.type === 'group' ? 'Nhóm' : 'Cá nhân'}
+                        </label>
                         <select
-                          value={currentStatus === 'in_progress' ? 'not_started' : currentStatus} // handle legacy data
+                          value={currentStatus}
                           onChange={(e) => updateProgress(asg.id, e.target.value)}
-                          disabled={currentStatus === 'received'}
+                          disabled={currentStatus === 'received' || currentStatus === 'completed'}
                           className={`block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border ${STATUS_COLORS[currentStatus as keyof typeof STATUS_COLORS] || STATUS_COLORS['not_started']}`}
                         >
-                          <option value="not_started">Chưa làm/Chưa gửi</option>
-                          <option value="submitted">Đã nộp bài (Chờ duyệt)</option>
+                          <option value="not_started">Chưa làm</option>
+                          <option value="in_progress">Đang làm</option>
                           <option value="completed">Đã hoàn thành</option>
+                          <option value="submitted">Đã nộp bài</option>
                           <option value="received" disabled className="text-gray-400">Cán sự đã nhận bài</option>
                         </select>
                         {currentStatus === 'received' && (
                           <p className="mt-1 text-xs text-blue-600 font-medium">Ban cán sự đã xác nhận nhận bài</p>
                         )}
                         {currentStatus === 'completed' && (
-                          <p className="mt-1 text-xs text-green-600 font-medium">Bản thảo cuối cùng / Đã hoàn thành</p>
+                          <p className="mt-1 text-xs text-green-600 font-medium">Đã hoàn thành</p>
                         )}
                       </div>
                     </div>
@@ -823,6 +878,17 @@ export default function CourseDetails() {
                   />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700">Hình thức Bài tập</label>
+                  <select
+                    value={newAsgType}
+                    onChange={e => setNewAsgType(e.target.value as 'individual' | 'group')}
+                    className="mt-1 block w-full rounded-md sm:text-sm border-gray-300 border px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="individual">Cá nhân</option>
+                    <option value="group">Theo Nhóm thực hành</option>
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700">Hướng dẫn chi tiết</label>
                   <textarea
                     value={newAsgDesc}
@@ -903,6 +969,119 @@ export default function CourseDetails() {
             </form>
           </div>
          </div>
+      )}
+
+      {/* Manage Practice Groups Modal */}
+      {showManageGroups && canManageAssignments && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-500 bg-opacity-75">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-lg font-medium text-gray-900">Quản lý Nhóm thực hành</h3>
+              <button onClick={() => setShowManageGroups(false)} className="text-gray-400 hover:text-gray-500">
+                <XCircle className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1 grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* List Groups */}
+              <div className="space-y-4">
+                <h4 className="font-semibold text-gray-700 flex items-center border-b pb-2">
+                  <Users className="h-4 w-4 mr-2" />
+                  Danh sách nhóm đã tạo
+                </h4>
+                {course.practiceGroups && Object.entries(course.practiceGroups).length > 0 ? (
+                  Object.entries(course.practiceGroups as Record<string, any>).map(([id, group]) => (
+                    <div key={id} className="p-3 border rounded-lg bg-gray-50 flex justify-between items-start">
+                      <div>
+                        <p className="font-bold text-gray-800">{group.name}</p>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {group.members.map((mId: string) => {
+                            const student = allStudents.find(s => s.id === mId);
+                            return (
+                              <span key={mId} className="px-2 py-0.5 bg-white border rounded text-xs text-gray-600">
+                                {student?.fullName || mId}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => handleDeletePracticeGroup(id)}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500 italic">Chưa có nhóm nào được tạo.</p>
+                )}
+              </div>
+
+              {/* Create Group Form */}
+              <div className="space-y-4 bg-blue-50/30 p-4 rounded-xl border border-blue-100">
+                <h4 className="font-semibold text-blue-800 flex items-center border-b border-blue-100 pb-2">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Tạo nhóm mới
+                </h4>
+                <form onSubmit={handleCreatePracticeGroup} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Tên nhóm</label>
+                    <input 
+                      type="text"
+                      required
+                      value={newGroupName}
+                      onChange={e => setNewGroupName(e.target.value)}
+                      placeholder="VD: Nhóm 1"
+                      className="mt-1 block w-full rounded-md border-gray-300 border px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Chọn thành viên</label>
+                    <div className="max-h-60 overflow-y-auto border rounded-md bg-white p-2">
+                      {allStudents.map(student => {
+                        const isSelected = selectedMembers.includes(student.id);
+                        return (
+                          <label key={student.id} className="flex items-center p-2 hover:bg-gray-50 cursor-pointer rounded">
+                            <input 
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {
+                                if (isSelected) {
+                                  setSelectedMembers(prev => prev.filter(id => id !== student.id));
+                                } else {
+                                  setSelectedMembers(prev => [...prev, student.id]);
+                                }
+                              }}
+                              className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                            <span className="ml-3 text-sm text-gray-700">{student.fullName} ({student.id})</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={creatingGroup || !newGroupName.trim() || selectedMembers.length === 0}
+                    className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {creatingGroup ? 'Đang tạo...' : 'Tạo nhóm'}
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gray-200">
+              <button
+                onClick={() => setShowManageGroups(false)}
+                className="px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 rounded-md"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Edit Course Modal */}

@@ -4,7 +4,8 @@ import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, setDoc
 import { db } from '../lib/firebase';
 import { Link } from 'react-router';
 import { handleFirestoreError, OperationType } from '../lib/error-handler';
-import { Plus, Book, ChevronRight } from 'lucide-react';
+import { Plus, Book, ChevronRight, AlertCircle } from 'lucide-react';
+import { getDoc, getDocs } from 'firebase/firestore';
 
 type Course = {
   id: string;
@@ -18,6 +19,7 @@ type Course = {
   createdAt: any;
   status?: string;
   completedAt?: any;
+  hasIncomplete?: boolean;
 };
 
 export default function Courses() {
@@ -34,7 +36,7 @@ export default function Courses() {
 
   useEffect(() => {
     const q = query(collection(db, 'courses'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
       let courseList = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -43,15 +45,38 @@ export default function Courses() {
       if (userProfile?.role === 'student') {
         courseList = courseList.filter(c => c.students?.includes(userProfile.id) || c.monitors?.includes(userProfile.id));
       }
+
+      // Check for incomplete assignments
+      if (currentUser && userProfile?.role === 'student') {
+        const updatedList = await Promise.all(courseList.map(async (course) => {
+          try {
+            const asgsSnap = await getDocs(collection(db, 'courses', course.id, 'assignments'));
+            let hasIncomplete = false;
+            for (const asgDoc of asgsSnap.docs) {
+              const progDoc = await getDoc(doc(db, 'courses', course.id, 'assignments', asgDoc.id, 'progress', currentUser.uid));
+              const status = progDoc.exists() ? progDoc.data().status : 'not_started';
+              if (status === 'not_started' || status === 'in_progress') {
+                hasIncomplete = true;
+                break;
+              }
+            }
+            return { ...course, hasIncomplete };
+          } catch (e) {
+            return course;
+          }
+        }));
+        setCourses(updatedList);
+      } else {
+        setCourses(courseList);
+      }
       
-      setCourses(courseList);
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'courses');
     });
 
     return () => unsubscribe();
-  }, [userProfile]);
+  }, [userProfile, currentUser]);
 
   const handleCreateCourse = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,10 +162,23 @@ export default function Courses() {
             >
               <div className="p-6">
                 <div className="flex items-center justify-between">
-                  <div className="bg-blue-50 rounded-lg p-3">
+                  <div className="bg-blue-50 rounded-lg p-3 relative">
                     <Book className="h-6 w-6 text-blue-600" />
+                    {course.hasIncomplete && (
+                      <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-4 w-4 bg-red-600 border-2 border-white"></span>
+                      </span>
+                    )}
                   </div>
-                  <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-blue-600 transition-colors" />
+                  <div className="flex flex-col items-end">
+                    {course.hasIncomplete && (
+                      <span className="mb-2 inline-flex items-center text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-100">
+                        <AlertCircle className="h-3 w-3 mr-1" /> CÓ BÀI CHƯA XONG
+                      </span>
+                    )}
+                    <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-blue-600 transition-colors" />
+                  </div>
                 </div>
                 <h3 className="mt-4 text-lg font-medium text-gray-900 truncate">
                   {course.name} - Học phần {course.coursePart || 'N/A'}

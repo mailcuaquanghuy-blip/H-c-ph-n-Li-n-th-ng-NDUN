@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, doc, onSnapshot, getDoc, getDocs } from 'firebase/firestore';
+import { collection, doc, onSnapshot, getDoc, getDocs, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { handleFirestoreError, OperationType } from '../lib/error-handler';
 import { ArrowLeft, CheckCircle2, Circle, Clock } from 'lucide-react';
@@ -278,9 +278,10 @@ export default function AssignmentStats() {
                           className="ml-2 block pl-3 pr-8 py-1 text-xs border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md border bg-white"
                         >
                           <option value="not_started">Chưa làm</option>
+                          <option value="in_progress">Đang làm</option>
                           <option value="submitted">Đã gửi (Chờ duyệt)</option>
-                          <option value="received">Đã nhận</option>
-                          <option value="completed">Đã hoàn thành</option>
+                          <option value="received">Đã nhận bài</option>
+                          <option value="completed">Hoàn thành (Đã duyệt)</option>
                         </select>
                       </div>
                     </td>
