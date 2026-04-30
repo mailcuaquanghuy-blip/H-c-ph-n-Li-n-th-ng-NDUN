@@ -93,10 +93,43 @@ export default function AssignmentStats() {
   }
 
   const handleProgressUpdate = async (studentId: string, updates: any) => {
-    if (!courseId || !assignmentId) return;
+    if (!courseId || !assignmentId || !course) return;
     try {
       if ('groupName' in updates) setUpdatingGroup(true);
-      await setDoc(doc(db, 'courses', courseId, 'assignments', assignmentId, 'progress', studentId), updates, { merge: true });
+      
+      const isGroupAsg = assignment?.type === 'group';
+      const updatedStatus = updates.status;
+
+      if (isGroupAsg && updatedStatus) {
+        // Find the user's practice group in course data
+        const groupEntry = Object.entries(course.practiceGroups || {}).find(([_, g]: any) => 
+          g.members.includes(studentId)
+        );
+
+        if (groupEntry) {
+          const [groupId, group]: [string, any] = groupEntry;
+          const batchPromises = group.members.map((mId: string) => 
+            setDoc(doc(db, 'courses', courseId, 'assignments', assignmentId, 'progress', mId), {
+              ...updates,
+              groupName: group.name,
+              groupId: groupId,
+              updatedAt: serverTimestamp()
+            }, { merge: true })
+          );
+          await Promise.all(batchPromises);
+        } else {
+          await setDoc(doc(db, 'courses', courseId, 'assignments', assignmentId, 'progress', studentId), {
+            ...updates,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+        }
+      } else {
+        await setDoc(doc(db, 'courses', courseId, 'assignments', assignmentId, 'progress', studentId), {
+          ...updates,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      }
+
       if ('groupName' in updates) setEditingGroup(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `courses/${courseId}/assignments/${assignmentId}/progress/${studentId}`);
@@ -155,13 +188,14 @@ export default function AssignmentStats() {
   const getStatusDisplay = (status: string | undefined) => {
     switch (status) {
       case 'completed':
-        return <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border ${STATUS_COLORS['completed']}`}><CheckCircle2 className="h-4 w-4 mr-1" />Hoàn thành</span>;
+        return <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border ${STATUS_COLORS['completed']}`}><CheckCircle2 className="h-4 w-4 mr-1" />Hoàn thành (Đã duyệt)</span>;
       case 'received':
-        return <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border ${STATUS_COLORS['received']}`}><CheckCircle2 className="h-4 w-4 mr-1" />Đã nhận</span>;
+        return <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border ${STATUS_COLORS['received']}`}><CheckCircle2 className="h-4 w-4 mr-1" />Cán sự: Đã nhận bài</span>;
       case 'submitted':
-        return <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border ${STATUS_COLORS['submitted']}`}><Clock className="h-4 w-4 mr-1" />Đã gửi</span>;
-      case 'not_started':
+        return <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border ${STATUS_COLORS['submitted']}`}><Clock className="h-4 w-4 mr-1" />Sinh viên: Đã nộp</span>;
       case 'in_progress':
+        return <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border ${STATUS_COLORS['in_progress']}`}><Circle className="h-4 w-4 mr-1" />Đang làm</span>;
+      case 'not_started':
       default:
         return <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border ${STATUS_COLORS['not_started']}`}><Circle className="h-4 w-4 mr-1" />Chưa gửi</span>;
     }
@@ -237,15 +271,14 @@ export default function AssignmentStats() {
             <tbody className="bg-white divide-y divide-gray-200">
               {sortedStudents.map((student, index) => {
                 const currentStatus = progressMap[student.id]?.status || 'not_started';
-                const displayStatus = currentStatus === 'in_progress' ? 'not_started' : currentStatus;
                 
                 return (
-                  <tr key={student.id} className={`${getStatusStyle(displayStatus)} border-l-4`}>
+                  <tr key={student.id} className={`${getStatusStyle(currentStatus)} border-l-4`}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {student.fullName}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.studentId}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.id}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {editingGroup?.studentId === student.id ? (
                         <input
@@ -271,17 +304,17 @@ export default function AssignmentStats() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end space-x-2">
-                        {getStatusDisplay(displayStatus)}
+                        {getStatusDisplay(currentStatus)}
                         <select
-                          value={displayStatus}
+                          value={currentStatus}
                           onChange={(e) => handleProgressUpdate(student.id, { status: e.target.value })}
                           className="ml-2 block pl-3 pr-8 py-1 text-xs border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md border bg-white"
                         >
                           <option value="not_started">Chưa làm</option>
                           <option value="in_progress">Đang làm</option>
-                          <option value="submitted">Đã gửi (Chờ duyệt)</option>
-                          <option value="received">Đã nhận bài</option>
-                          <option value="completed">Hoàn thành (Đã duyệt)</option>
+                          <option value="completed">SV: Đã xong / Cán sự: Duyệt xong</option>
+                          <option value="submitted">SV: Đã nộp bài</option>
+                          <option value="received">Cán sự: Đã nhận bài</option>
                         </select>
                       </div>
                     </td>

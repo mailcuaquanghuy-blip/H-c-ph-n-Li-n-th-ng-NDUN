@@ -331,12 +331,41 @@ export default function CourseDetails() {
   };
 
   const updateProgress = async (assignmentId: string, status: string) => {
-    if (!currentUser || !courseId) return;
+    if (!currentUser || !courseId || !course) return;
+    
     try {
-      await setDoc(doc(db, 'courses', courseId, 'assignments', assignmentId, 'progress', currentUser.uid), {
+      const asg = assignments.find(a => a.id === assignmentId);
+      const isGroupAsg = asg?.type === 'group';
+      
+      const updateData = {
         status,
         updatedAt: serverTimestamp()
-      });
+      };
+
+      if (isGroupAsg) {
+        // Find the user's practice group
+        const groupEntry = Object.entries(course.practiceGroups || {}).find(([_, g]: any) => 
+          g.members.includes(currentUser.uid)
+        );
+
+        if (groupEntry) {
+          const [groupId, group]: [string, any] = groupEntry;
+          // Update for all members in the group
+          const batchPromises = group.members.map((mId: string) => 
+            setDoc(doc(db, 'courses', courseId, 'assignments', assignmentId, 'progress', mId), {
+              ...updateData,
+              groupName: group.name,
+              groupId: groupId
+            }, { merge: true })
+          );
+          await Promise.all(batchPromises);
+        } else {
+          // If not in a group, update individually but maybe alert?
+          await setDoc(doc(db, 'courses', courseId, 'assignments', assignmentId, 'progress', currentUser.uid), updateData, { merge: true });
+        }
+      } else {
+        await setDoc(doc(db, 'courses', courseId, 'assignments', assignmentId, 'progress', currentUser.uid), updateData, { merge: true });
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `courses/${courseId}/assignments/${assignmentId}/progress/${currentUser.uid}`);
     }
@@ -398,8 +427,9 @@ export default function CourseDetails() {
 
   const STATUS_COLORS = {
     'not_started': 'bg-gray-100 text-gray-800 border-gray-200',
+    'in_progress': 'bg-blue-50 text-blue-700 border-blue-100',
     'submitted': 'bg-yellow-100 text-yellow-800 border-yellow-200',
-    'received': 'bg-blue-100 text-blue-800 border-blue-200',
+    'received': 'bg-indigo-100 text-indigo-800 border-indigo-200',
     'completed': 'bg-green-100 text-green-800 border-green-200'
   };
 
@@ -627,15 +657,16 @@ export default function CourseDetails() {
                         >
                           <option value="not_started">Chưa làm</option>
                           <option value="in_progress">Đang làm</option>
-                          <option value="completed">Đã hoàn thành</option>
-                          <option value="submitted">Đã nộp bài</option>
-                          <option value="received" disabled className="text-gray-400">Cán sự đã nhận bài</option>
+                          <option value="completed">Sinh viên: Đã xong</option>
+                          <option value="submitted">Sinh viên: Đã nộp bài</option>
+                          <option value="received" disabled className="text-gray-400">Cán sự: Đã nhận bài</option>
+                          <option value="completed" disabled className="text-gray-400">Cán sự: Đã duyệt xong</option>
                         </select>
                         {currentStatus === 'received' && (
-                          <p className="mt-1 text-xs text-blue-600 font-medium">Ban cán sự đã xác nhận nhận bài</p>
+                          <p className="mt-1 text-xs text-indigo-600 font-medium">Cán sự đã xác nhận nhận bài</p>
                         )}
                         {currentStatus === 'completed' && (
-                          <p className="mt-1 text-xs text-green-600 font-medium">Đã hoàn thành</p>
+                          <p className="mt-1 text-xs text-green-600 font-medium">Hoàn thành / Đã duyệt</p>
                         )}
                       </div>
                     </div>
@@ -1037,9 +1068,12 @@ export default function CourseDetails() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Chọn thành viên</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Chọn thành viên (Chỉ hiện SV chưa có nhóm)</label>
                     <div className="max-h-60 overflow-y-auto border rounded-md bg-white p-2">
-                      {allStudents.map(student => {
+                      {allStudents.filter(s => {
+                        const allAssignedIds = Object.values(course.practiceGroups || {}).flatMap((g: any) => g.members);
+                        return !allAssignedIds.includes(s.id);
+                      }).map(student => {
                         const isSelected = selectedMembers.includes(student.id);
                         return (
                           <label key={student.id} className="flex items-center p-2 hover:bg-gray-50 cursor-pointer rounded">
@@ -1059,6 +1093,12 @@ export default function CourseDetails() {
                           </label>
                         );
                       })}
+                      {allStudents.filter(s => {
+                        const allAssignedIds = Object.values(course.practiceGroups || {}).flatMap((g: any) => g.members);
+                        return !allAssignedIds.includes(s.id);
+                      }).length === 0 && (
+                        <p className="text-sm text-gray-500 italic p-2">Tất cả sinh viên đã được phân vào nhóm.</p>
+                      )}
                     </div>
                   </div>
                   <button
