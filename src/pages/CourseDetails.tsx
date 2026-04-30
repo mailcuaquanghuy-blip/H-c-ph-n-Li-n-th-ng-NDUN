@@ -731,16 +731,16 @@ export default function CourseDetails() {
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('practiceGroup')}>
                     Nhóm TH {sortConfig.key === 'practiceGroup' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                   </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lớp truyền thống</th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Số điện thoại</th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Đơn vị công tác</th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Điểm danh</th>
-                  {canManageAssignments && (
-                    <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Thao tác</th>
-                  )}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {sortedStudents.length === 0 ? (
                   <tr>
-                    <td colSpan={canManageAssignments ? 6 : 5} className="px-6 py-8 text-center text-gray-500">Chưa có sinh viên nào trong lớp.</td>
+                    <td colSpan={8} className="px-6 py-8 text-center text-gray-500">Chưa có sinh viên nào trong lớp.</td>
                   </tr>
                 ) : (
                   sortedStudents.map((student, index) => {
@@ -787,6 +787,15 @@ export default function CourseDetails() {
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {student.traditionalClass || <span className="text-gray-400 italic">Chưa điền</span>}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {student.phoneNumber || <span className="text-gray-400 italic">Chưa điền</span>}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {student.workplace || <span className="text-gray-400 italic">Chưa điền</span>}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {isAdmin ? (
                             <button
                               onClick={() => handleAdminToggleCheckIn(student.id, student.studentId, isCheckedIn)}
@@ -803,19 +812,6 @@ export default function CourseDetails() {
                             )
                           )}
                         </td>
-                        {canManageAssignments && (
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            {isAdmin && (
-                              <button
-                                onClick={() => handleAdminRemoveStudent(student.id)}
-                                className="text-red-600 hover:text-red-900 inline-flex items-center"
-                                title="Xóa khỏi lớp học phần"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            )}
-                          </td>
-                        )}
                       </tr>
                     );
                   })

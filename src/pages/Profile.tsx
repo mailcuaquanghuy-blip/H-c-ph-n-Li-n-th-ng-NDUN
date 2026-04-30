@@ -8,6 +8,7 @@ export default function Profile() {
   
   const [phoneNumber, setPhoneNumber] = useState('');
   const [workplace, setWorkplace] = useState('');
+  const [traditionalClass, setTraditionalClass] = useState('');
   const [password, setPassword] = useState('');
   
   const [loading, setLoading] = useState(false);
@@ -17,6 +18,7 @@ export default function Profile() {
     if (userProfile) {
       setPhoneNumber(userProfile.phoneNumber || '');
       setWorkplace(userProfile.workplace || '');
+      setTraditionalClass(userProfile.traditionalClass || '');
       setPassword(userProfile.password || '');
     }
   }, [userProfile]);
@@ -32,6 +34,7 @@ export default function Profile() {
       const updates: any = {
         phoneNumber,
         workplace,
+        traditionalClass,
       };
 
       if (password && password !== userProfile.password) {
@@ -83,6 +86,22 @@ export default function Profile() {
               <label className="block text-sm font-medium text-gray-700">{userProfile.role === 'admin' ? 'Tên đăng nhập' : 'Mã sinh viên (Không thể đổi)'}</label>
               <div className="mt-1 block w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md shadow-sm sm:text-sm text-gray-500">
                 {userProfile.id}
+              </div>
+            </div>
+
+            <div className="sm:col-span-2">
+              <label htmlFor="traditionalClass" className="block text-sm font-medium text-gray-700">
+                Lớp truyền thống
+              </label>
+              <div className="mt-1">
+                <input
+                  id="traditionalClass"
+                  type="text"
+                  value={traditionalClass}
+                  onChange={(e) => setTraditionalClass(e.target.value)}
+                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  placeholder="Nhập lớp truyền thống (VD: K64A2)"
+                />
               </div>
             </div>
 
