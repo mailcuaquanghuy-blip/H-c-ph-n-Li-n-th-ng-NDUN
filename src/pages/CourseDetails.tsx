@@ -637,7 +637,7 @@ export default function CourseDetails() {
             <div className="space-y-4">
               {assignments.map(asg => {
                 const currentProgress = progressData[asg.id] || {};
-                const currentStatus = currentProgress.status || 'not_started';
+                const currentStatus = currentProgress.status || 'in_progress';
                 
                 return (
                   <div key={asg.id} className="bg-white shadow-sm border border-gray-200 rounded-lg p-5">
@@ -661,15 +661,14 @@ export default function CourseDetails() {
                         <select
                           value={currentStatus}
                           onChange={(e) => updateProgress(asg.id, e.target.value)}
-                          disabled={currentStatus === 'received' || currentStatus === 'completed'}
+                          disabled={currentStatus === 'received' || (currentStatus === 'completed' && !canManageAssignments)}
                           className={`block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border ${STATUS_COLORS[currentStatus as keyof typeof STATUS_COLORS] || STATUS_COLORS['not_started']}`}
                         >
-                          <option value="not_started">Chưa làm</option>
                           <option value="in_progress">Đang làm</option>
                           <option value="completed">Sinh viên: Đã xong</option>
                           <option value="submitted">Sinh viên: Đã nộp bài</option>
-                          <option value="received" disabled className="text-gray-400">Cán sự: Đã nhận bài</option>
-                          <option value="completed" disabled className="text-gray-400">Cán sự: Đã duyệt xong</option>
+                          <option value="received" disabled={!canManageAssignments} className={!canManageAssignments ? "text-gray-400" : ""}>Cán sự: Đã nhận bài</option>
+                          <option value="completed" disabled={!canManageAssignments} className={!canManageAssignments ? "text-gray-400" : ""}>Cán sự: Đã duyệt xong</option>
                         </select>
                         {currentStatus === 'received' && (
                           <p className="mt-1 text-xs text-indigo-600 font-medium">Cán sự đã xác nhận nhận bài</p>
@@ -899,14 +898,12 @@ export default function CourseDetails() {
               const asgProg = allProgress.filter(p => p.assignmentId === asg.id && allStudents.some(s => s.id === p.userId));
               const done = asgProg.filter(p => p.status === 'completed' || p.status === 'received').length;
               const submitted = asgProg.filter(p => p.status === 'submitted').length;
-              const working = asgProg.filter(p => p.status === 'in_progress').length;
-              const notStarted = Math.max(0, allStudents.length - done - submitted - working);
+              const working = Math.max(0, allStudents.length - done - submitted);
               
               const asgData = [
                 { name: 'Xong', value: done, color: '#10B981' },
                 { name: 'Đã nộp', value: submitted, color: '#FBBF24' },
-                { name: 'Đang làm', value: working, color: '#3B82F6' },
-                { name: 'Chưa làm', value: notStarted, color: '#D1D5DB' }
+                { name: 'Đang làm', value: working, color: '#3B82F6' }
               ].filter(d => d.value > 0);
 
               const asgDonePercent = Math.round((done / allStudents.length) * 100) || 0;
@@ -980,7 +977,7 @@ export default function CourseDetails() {
                       </td>
                       {assignments.map(asg => {
                         const prog = allProgress.find(p => p.assignmentId === asg.id && p.userId === student.id);
-                        const status = prog?.status || 'not_started';
+                        const status = prog?.status || 'in_progress';
                         
                         return (
                           <td key={asg.id} className="px-4 py-4 whitespace-nowrap text-center">
@@ -988,7 +985,7 @@ export default function CourseDetails() {
                               {status === 'completed' ? 'Xong' : 
                                status === 'received' ? 'Đã nhận' :
                                status === 'submitted' ? 'Đã nộp' :
-                               status === 'in_progress' ? 'Đang làm' : 'Chưa làm'}
+                               'Đang làm'}
                             </span>
                           </td>
                         );

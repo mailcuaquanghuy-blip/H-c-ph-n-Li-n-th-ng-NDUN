@@ -183,7 +183,7 @@ export default function AssignmentStats() {
   const chartData = [
     { name: 'Đã nhận/Hoàn thành', value: students.filter(s => progressMap[s.id]?.status === 'completed' || progressMap[s.id]?.status === 'received').length, color: '#10B981' }, 
     { name: 'Đã gửi', value: students.filter(s => progressMap[s.id]?.status === 'submitted').length, color: '#FBBF24' }, 
-    { name: 'Chưa làm', value: students.filter(s => !progressMap[s.id]?.status || progressMap[s.id]?.status === 'not_started' || progressMap[s.id]?.status === 'in_progress').length, color: '#D1D5DB' }, 
+    { name: 'Đang làm', value: students.filter(s => !progressMap[s.id]?.status || progressMap[s.id]?.status === 'in_progress' || progressMap[s.id]?.status === 'not_started').length, color: '#3B82F6' }, 
   ].filter(d => d.value > 0);
 
   const STATUS_COLORS = {
@@ -320,9 +320,9 @@ export default function AssignmentStats() {
                         >
                           <option value="not_started">Chưa làm</option>
                           <option value="in_progress">Đang làm</option>
-                          <option value="completed">SV: Đã xong / Cán sự: Duyệt xong</option>
-                          <option value="submitted">SV: Đã nộp bài</option>
+                          <option value="submitted">Sinh viên: Đã nộp bài</option>
                           <option value="received">Cán sự: Đã nhận bài</option>
+                          <option value="completed">Cán sự: Đã duyệt xong</option>
                         </select>
                       </div>
                     </td>
